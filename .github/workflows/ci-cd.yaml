@@ -1,4 +1,4 @@
-name: CI/CD with Argo CD
+name: CI/CD with Trivy + Argo CD
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
+    - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up Docker
@@ -36,9 +36,43 @@ jobs:
         push: true
         tags: ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.TAG }}
 
+    # --- Trivy Scan Starts Here ---
+    - name: Run Trivy scan (JSON)
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/root aquasec/trivy:latest \
+          image --format json --output /root/trivy-report.json \
+          ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.TAG }}
+
+    - name: Fail if critical vulnerabilities found
+      run: |
+        count=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-report.json)
+        echo "Found $count critical vulnerabilities"
+        if [ "$count" -gt 0 ]; then
+          echo "❌ Build failed due to critical vulnerabilities"
+          exit 1
+        fi
+
+    - name: Upload Trivy report as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-report
+        path: trivy-report.json
+
+    - name: Convert Trivy JSON to SARIF (and upload to GitHub Security tab)
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/root aquasec/trivy:latest \
+          image --format sarif --output /root/trivy-results.sarif \
+          ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.TAG }}
+
+    - name: Upload SARIF to GitHub Security Dashboard
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-results.sarif
+    # --- Trivy Scan Ends Here ---
+
     - name: Update image tag in deployment.yaml
       run: |
-        sed -i "s|image: .*$|image: ${IMAGE_NAME}:${{ steps.vars.outputs.TAG }}|" k8s/deployment.yaml
+        sed -i "s|image: .*|image: ${IMAGE_NAME}:${{ steps.vars.outputs.TAG }}|" k8s/deployment.yaml
 
     - name: Commit and push updated manifest
       run: |
