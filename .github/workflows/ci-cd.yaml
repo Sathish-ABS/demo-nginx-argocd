@@ -45,20 +45,20 @@ jobs:
 
     - name: Fail if critical vulnerabilities found
       run: |
-        count=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-report.json)
+        count=$(jq '[.Results[] | select(.Vulnerabilities != null) | .Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-report.json)
         echo "Found $count critical vulnerabilities"
         if [ "$count" -gt 0 ]; then
           echo "❌ Build failed due to critical vulnerabilities"
           exit 1
         fi
 
-    - name: Upload Trivy report as artifact
+    - name: Upload Trivy JSON report as artifact
       uses: actions/upload-artifact@v4
       with:
         name: trivy-report
         path: trivy-report.json
 
-    - name: Convert Trivy JSON to SARIF (and upload to GitHub Security tab)
+    - name: Run Trivy scan (SARIF)
       run: |
         docker run --rm -v ${{ github.workspace }}:/root aquasec/trivy:latest \
           image --format sarif --output /root/trivy-results.sarif \
