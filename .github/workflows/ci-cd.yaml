@@ -1,4 +1,4 @@
-name: CI/CD with Trivy + Argo CD
+name: CI/CD with Trivy + SonarCloud + Argo CD
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
         push: true
         tags: ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.TAG }}
 
-    # --- Trivy Scan Starts Here ---
+    # -------- Trivy Security Scan --------
     - name: Run Trivy scan (JSON)
       run: |
         docker run --rm -v ${{ github.workspace }}:/root aquasec/trivy:latest \
@@ -58,18 +58,21 @@ jobs:
         name: trivy-report
         path: trivy-report.json
 
-    - name: Run Trivy scan (SARIF)
-      run: |
-        docker run --rm -v ${{ github.workspace }}:/root aquasec/trivy:latest \
-          image --format sarif --output /root/trivy-results.sarif \
-          ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.TAG }}
-
-    - name: Upload SARIF to GitHub Security Dashboard
-      uses: github/codeql-action/upload-sarif@v3
+    # -------- SonarCloud Static Code Analysis --------
+    - name: Set up Java (required by SonarCloud CLI)
+      uses: actions/setup-java@v3
       with:
-        sarif_file: trivy-results.sarif
-    # --- Trivy Scan Ends Here ---
+        distribution: 'temurin'
+        java-version: '17'
 
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@v2
+      with:
+        projectBaseDir: .
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    # -------- GitOps Update Manifest --------
     - name: Update image tag in deployment.yaml
       run: |
         sed -i "s|image: .*|image: ${IMAGE_NAME}:${{ steps.vars.outputs.TAG }}|" k8s/deployment.yaml
