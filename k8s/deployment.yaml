@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: sathish404/demo-nginx-argocd:sha-feada5e
+        image: sathish404/demo-nginx-argocd:sha-f55d92a
         ports:
         - containerPort: 80
